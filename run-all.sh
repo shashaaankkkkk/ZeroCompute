@@ -14,22 +14,28 @@ echo "Starting ZeroCompute services in tmux session: $SESSION"
 # Create new session, detached
 tmux new-session -d -s $SESSION -n main
 
-# Pane 0: control-service
-tmux send-keys -t $SESSION:main "cd control-service && ./run.sh" C-m
+# Set the base path
+BASE_PATH=$(pwd)
 
-# Pane 1: worker-node
-tmux split-window -h -t $SESSION:main
-tmux send-keys -t $SESSION:main.1 "cd worker-node && ./run.sh" C-m
+# --- Pane 0: Control Service ---
+tmux send-keys -t $SESSION:main.0 "cd $BASE_PATH/control-service && ./run.sh" C-m
 
-# Pane 2: storage-node
+# --- Pane 1: Worker Node ---
+# Split the first pane horizontally
+tmux split-window -h -t $SESSION:main.0
+tmux send-keys -t $SESSION:main.1 "cd $BASE_PATH/worker-node && ./run.sh" C-m
+
+# --- Pane 2: Storage Node ---
+# Split the first pane vertically
 tmux split-window -v -t $SESSION:main.0
-tmux send-keys -t $SESSION:main.2 "cd storage-node && ./run.sh" C-m
+tmux send-keys -t $SESSION:main.2 "cd $BASE_PATH/storage-node && ./run.sh" C-m
 
-# Pane 3: primary-agent
+# --- Pane 3: Primary Agent ---
+# Split the second pane (Pane 1) vertically
 tmux split-window -v -t $SESSION:main.1
-tmux send-keys -t $SESSION:main.3 "cd primary-agent && ./run.sh" C-m
+tmux send-keys -t $SESSION:main.3 "cd $BASE_PATH/primary-agent && sleep 5 && ./run.sh; read -p 'Done. Press enter to exit...'" C-m
 
-# Set layout to tiled
+# Final layout adjustment
 tmux select-layout -t $SESSION:main tiled
 
 # Attach to the session
