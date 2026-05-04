@@ -1,37 +1,64 @@
 #!/bin/bash
 
-SESSION="zerocompute"
-BASE_PATH=$(pwd)
-VENV_PYTHON="$BASE_PATH/venv/bin/python"
+# ======================================================
+#   0.space Platform — Unified Infrastructure Launcher
+# ======================================================
 
-echo "Full System Purge..."
+SESSION="0space"
+BASE_PATH="/Users/shashank/zerocompute"
+VENV="$BASE_PATH/venv/bin/python"
+
+echo "------------------------------------------------"
+echo "  Initializing 0.space Management Console..."
+echo "------------------------------------------------"
+
+# --- 1. System Cleanup ---
+echo "[1/4] Purging existing services..."
 tmux kill-session -t $SESSION 2>/dev/null
-lsof -ti:8000,8001,8002,8003,8004,3000 | xargs kill -9 2>/dev/null
+lsof -ti:8000,8001,8004,3000 | xargs kill -9 2>/dev/null
+sleep 2
 
-echo "Initializing Isolated Mesh..."
-tmux new-session -d -s $SESSION -n 'mesh'
-P0=$(tmux display-message -p '#{pane_id}')
+# --- 2. Dependency Check ---
+echo "[2/4] Verifying 0.space dependencies..."
+$BASE_PATH/venv/bin/pip install --quiet djangorestframework-simplejwt django-cors-headers uvicorn fastapi requests django
+echo "  — Core Dependencies: OK"
 
-# Create 4-pane grid
-P1=$(tmux split-window -h -P -t $P0)
-P2=$(tmux split-window -v -P -t $P0)
-P3=$(tmux split-window -v -P -t $P1)
+# --- 3. Database Migration ---
+echo "[3/4] Syncing infrastructure registry..."
+cd $BASE_PATH/portal-backend && $VENV manage.py migrate --noinput
+echo "  — Registry: OK"
 
-# --- SERVICE LAUNCH ---
+# --- 4. Launching Services ---
+echo "[4/4] Spawning terminal grid..."
 
-echo "Launching Control (8000)..."
-tmux send-keys -t $P0 "cd $BASE_PATH/control-service && export PYTHONPATH=$BASE_PATH/control-service && $VENV_PYTHON -m uvicorn app.main:app --host 0.0.0.0 --port 8000" C-m
+# Create session and first pane (Control Plane)
+tmux new-session -d -s $SESSION -n console
+tmux send-keys -t $SESSION "cd $BASE_PATH/control-service && PYTHONPATH=$BASE_PATH/control-service $VENV -m uvicorn app.main:app --host 0.0.0.0 --port 8000" C-m
 
-sleep 5
+# Split for Django Backend
+tmux split-window -h -t $SESSION
+tmux send-keys -t $SESSION "cd $BASE_PATH/portal-backend && $VENV manage.py runserver 0.0.0.0:8004 --noreload" C-m
 
-echo "Launching Backend (8004)..."
-tmux send-keys -t $P1 "cd $BASE_PATH/portal-backend && $VENV_PYTHON manage.py runserver 0.0.0.0:8004" C-m
+# Split bottom-left for Primary Node
+tmux select-pane -t 0
+tmux split-window -v -t $SESSION
+tmux send-keys -t $SESSION "cd $BASE_PATH/mesh-node && PYTHONPATH=$BASE_PATH/mesh-node NODE_PORT=8001 NODE_ID=primary-node ACCOUNT_ID=admin_mesh $VENV -m uvicorn app.main:app --host 0.0.0.0 --port 8001" C-m
 
-echo "Launching Primary Node (8001)..."
-tmux send-keys -t $P2 "cd $BASE_PATH/mesh-node && export NODE_PORT=8001 && export NODE_ID=primary-node && export PYTHONPATH=$BASE_PATH/mesh-node && $VENV_PYTHON -m uvicorn app.main:app --host 0.0.0.0 --port 8001" C-m
+# Split bottom-right for Web Portal
+tmux select-pane -t 1
+tmux split-window -v -t $SESSION
+tmux send-keys -t $SESSION "cd $BASE_PATH/web-portal && npm run dev" C-m
 
-echo "Launching Web Portal (3000)..."
-tmux send-keys -t $P3 "cd $BASE_PATH/web-portal && npm run dev" C-m
+echo ""
+echo "================================================"
+echo "  0.space is now ONLINE"
+echo "================================================"
+echo "  → Management Portal: http://localhost:3000"
+echo "  → Control Engine:    http://localhost:8000"
+echo "  → Fleet Backend:     http://localhost:8004"
+echo "================================================"
+echo ""
+echo "Attaching to 0.space console (Ctrl+B then D to detach)..."
+sleep 1
 
-tmux select-layout tiled
 tmux attach-session -t $SESSION
