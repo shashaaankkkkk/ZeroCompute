@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  control-service:
+    build: ./control-service
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=.
+    networks:
+      - zerocompute-net
+
+  portal-backend:
+    build: ./portal-backend
+    ports:
+      - "8004:8004"
+    environment:
+      - CONTROL_SERVICE_URL=http://control-service:8000
+    depends_on:
+      - control-service
+    networks:
+      - zerocompute-net
+
+  web-portal:
+    build: ./web-portal
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8004
+    depends_on:
+      - portal-backend
+    networks:
+      - zerocompute-net
+
+  worker-node:
+    build: ./worker-node
+    environment:
+      - CONTROL_URL=http://control-service:8000
+      - ACCOUNT_ID=shashank_dev
+    depends_on:
+      - control-service
+    networks:
+      - zerocompute-net
+
+  storage-node:
+    build: ./storage-node
+    environment:
+      - CONTROL_URL=http://control-service:8000
+      - ACCOUNT_ID=shashank_dev
+    depends_on:
+      - control-service
+    networks:
+      - zerocompute-net
+
+networks:
+  zerocompute-net:
+    driver: bridge

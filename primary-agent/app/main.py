@@ -1,9 +1,27 @@
-from app.core.orchestrator import run_task, get_file
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from app.core.orchestrator import run_task
+import logging
 
-if __name__ == "__main__":
-    print("Compute Test:")
-    print(run_task("hello"))
-    print(run_task("HELLO WORLD"))
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    print("\nFile Test:")
-    print(get_file("some-file-id"))
+app = FastAPI()
+
+class TaskRequest(BaseModel):
+    task_id: str
+    payload: str
+
+@app.post("/task")
+async def handle_task_request(request: TaskRequest):
+    try:
+        logger.info(f"Received task {request.task_id}")
+        result = run_task(request.payload)
+        return {"task_id": request.task_id, "result": result}
+    except Exception as e:
+        logger.error(f"Task failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}

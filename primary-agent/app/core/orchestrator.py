@@ -5,16 +5,24 @@ from app.core.decision_engine import is_heavy_task
 
 def run_task(data: str):
     if is_heavy_task(data):
-        workers = get_nodes("worker")
-        if workers:
-            return send_task(workers[0], {
-                "task_id": "1",
-                "payload": data
-            })
+        try:
+            workers = get_nodes("worker")
+            if workers:
+                return send_task(workers[0], {
+                    "task_id": "1",
+                    "payload": data
+                })
+        except Exception as e:
+            print(f"Failed to offload task: {e}")
 
-    return {"result": data.lower()}
+    # Fallback to local execution
+    return {"result": data.lower(), "note": "Execution completed locally"}
 
 def get_file(file_id: str):
-    storage_nodes = get_nodes("storage")
-    if storage_nodes:
-        return fetch_file(storage_nodes[0], file_id)
+    try:
+        storage_nodes = get_nodes("storage")
+        if storage_nodes:
+            return fetch_file(storage_nodes[0], file_id)
+    except Exception as e:
+        print(f"Failed to fetch file: {e}")
+    return None

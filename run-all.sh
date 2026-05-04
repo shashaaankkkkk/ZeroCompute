@@ -1,42 +1,37 @@
 #!/bin/bash
 
 SESSION="zerocompute"
-
-# Check if session already exists and kill it
-tmux has-session -t $SESSION 2>/dev/null
-if [ $? -eq 0 ]; then
-    echo "Killing existing tmux session: $SESSION"
-    tmux kill-session -t $SESSION
-fi
-
-echo "Starting ZeroCompute services in tmux session: $SESSION"
-
-# Create new session, detached
-tmux new-session -d -s $SESSION -n main
-
-# Set the base path
 BASE_PATH=$(pwd)
+VENV_PYTHON="$BASE_PATH/venv/bin/python"
 
-# --- Pane 0: Control Service ---
-tmux send-keys -t $SESSION:main.0 "cd $BASE_PATH/control-service && ./run.sh" C-m
+echo "Full System Purge..."
+tmux kill-session -t $SESSION 2>/dev/null
+lsof -ti:8000,8001,8002,8003,8004,3000 | xargs kill -9 2>/dev/null
 
-# --- Pane 1: Worker Node ---
-# Split the first pane horizontally
-tmux split-window -h -t $SESSION:main.0
-tmux send-keys -t $SESSION:main.1 "cd $BASE_PATH/worker-node && ./run.sh" C-m
+echo "Initializing Isolated Mesh..."
+tmux new-session -d -s $SESSION -n 'mesh'
+P0=$(tmux display-message -p '#{pane_id}')
 
-# --- Pane 2: Storage Node ---
-# Split the first pane vertically
-tmux split-window -v -t $SESSION:main.0
-tmux send-keys -t $SESSION:main.2 "cd $BASE_PATH/storage-node && ./run.sh" C-m
+# Create 4-pane grid
+P1=$(tmux split-window -h -P -t $P0)
+P2=$(tmux split-window -v -P -t $P0)
+P3=$(tmux split-window -v -P -t $P1)
 
-# --- Pane 3: Primary Agent ---
-# Split the second pane (Pane 1) vertically
-tmux split-window -v -t $SESSION:main.1
-tmux send-keys -t $SESSION:main.3 "cd $BASE_PATH/primary-agent && sleep 5 && ./run.sh; read -p 'Done. Press enter to exit...'" C-m
+# --- SERVICE LAUNCH ---
 
-# Final layout adjustment
-tmux select-layout -t $SESSION:main tiled
+echo "Launching Control (8000)..."
+tmux send-keys -t $P0 "cd $BASE_PATH/control-service && export PYTHONPATH=$BASE_PATH/control-service && $VENV_PYTHON -m uvicorn app.main:app --host 0.0.0.0 --port 8000" C-m
 
-# Attach to the session
+sleep 5
+
+echo "Launching Backend (8004)..."
+tmux send-keys -t $P1 "cd $BASE_PATH/portal-backend && $VENV_PYTHON manage.py runserver 0.0.0.0:8004" C-m
+
+echo "Launching Primary Node (8001)..."
+tmux send-keys -t $P2 "cd $BASE_PATH/mesh-node && export NODE_PORT=8001 && export NODE_ID=primary-node && export PYTHONPATH=$BASE_PATH/mesh-node && $VENV_PYTHON -m uvicorn app.main:app --host 0.0.0.0 --port 8001" C-m
+
+echo "Launching Web Portal (3000)..."
+tmux send-keys -t $P3 "cd $BASE_PATH/web-portal && npm run dev" C-m
+
+tmux select-layout tiled
 tmux attach-session -t $SESSION
